@@ -1,0 +1,74 @@
+[
+  {
+    "question": "Qual é a potência do motor da esteira ET-200?",
+    "expected_answer": "O motor é trifásico de 1,5 kW (2 cv), 380 V, 60 Hz.",
+    "document": "manual-esteira-et200.pdf",
+    "expected_page": 2
+  },
+  {
+    "question": "Qual a faixa de velocidade ajustável da correia?",
+    "expected_answer": "Entre 0,2 e 1,5 metro por segundo, ajustada pelo inversor de frequência.",
+    "document": "manual-esteira-et200.pdf",
+    "expected_page": 2
+  },
+  {
+    "question": "Qual disjuntor deve ser usado na alimentação elétrica da esteira?",
+    "expected_answer": "Um disjuntor dedicado de 10 A, com aterramento conforme a NBR 5410.",
+    "document": "manual-esteira-et200.pdf",
+    "expected_page": 3
+  },
+  {
+    "question": "Como rearmar a esteira depois de apertar o botão de emergência?",
+    "expected_answer": "Gire o botão de emergência no sentido horário para destravar e depois pressione o botão azul de rearme.",
+    "document": "manual-esteira-et200.pdf",
+    "expected_page": 4
+  },
+  {
+    "question": "Que óleo devo usar na troca do redutor e com que frequência?",
+    "expected_answer": "Óleo sintético ISO VG 220, 0,8 litro, a cada 2.000 horas de operação.",
+    "document": "manual-esteira-et200.pdf",
+    "expected_page": 5
+  },
+  {
+    "question": "Qual o prazo de garantia do equipamento?",
+    "expected_answer": "12 meses a partir da data da nota fiscal, desde que a manutenção preventiva seja registrada.",
+    "document": "manual-esteira-et200.pdf",
+    "expected_page": 5
+  },
+  {
+    "question": "O que significa o código F02 no inversor?",
+    "expected_answer": "Sobrecorrente: reduza a carga sobre a correia e verifique se algum rolete está travado.",
+    "document": "manual-esteira-et200.pdf",
+    "expected_page": 6
+  },
+  {
+    "question": "Em quantos períodos posso dividir minhas férias?",
+    "expected_answer": "Em até três períodos, um deles com pelo menos 14 dias corridos e os demais com no mínimo 5 dias.",
+    "document": "politica-ferias-beneficios.pdf",
+    "expected_page": 2
+  },
+  {
+    "question": "Com quanta antecedência preciso pedir férias?",
+    "expected_answer": "Com antecedência mínima de 45 dias, pelo portal do colaborador, com aprovação do gestor.",
+    "document": "politica-ferias-beneficios.pdf",
+    "expected_page": 2
+  },
+  {
+    "question": "Qual o valor do vale-refeição?",
+    "expected_answer": "R$ 900,00 por mês, creditados no primeiro dia útil.",
+    "document": "politica-ferias-beneficios.pdf",
+    "expected_page": 3
+  },
+  {
+    "question": "Quais dias a presença no escritório é obrigatória?",
+    "expected_answer": "Às terças e quintas-feiras.",
+    "document": "politica-ferias-beneficios.pdf",
+    "expected_page": 4
+  },
+  {
+    "question": "Qual o adicional de hora extra aos domingos?",
+    "expected_answer": "100% aos domingos e feriados.",
+    "document": "politica-ferias-beneficios.pdf",
+    "expected_page": 4
+  }
+]

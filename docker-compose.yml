@@ -1,0 +1,54 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: docchat
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d docchat"]
+      interval: 3s
+      retries: 20
+
+  backend:
+    build: ./backend
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/docchat
+      SAMPLES_DIR: /samples
+      CORS_ORIGINS: http://localhost:8080,http://localhost:5173
+    volumes:
+      - ./samples:/samples:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # para usar o Ollama instalado na própria máquina
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+  # Opcional: docker compose --profile ollama up
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+
+volumes:
+  pgdata:
+  ollama:
