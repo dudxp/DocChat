@@ -5,6 +5,13 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DocChat</title>
+    <script>
+      // Aplica o tema salvo antes do primeiro desenho, para não piscar a cor padrão.
+      try {
+        const t = JSON.parse(localStorage.getItem("docchat-theme") || "null");
+        if (t) Object.assign(document.documentElement.dataset, { mode: t.mode, accent: t.accent });
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -20,7 +20,15 @@ def init_db() -> None:
     with engine.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     Base.metadata.create_all(engine)
+    _upgrade_schema()
     _check_embedding_dimension()
+
+
+def _upgrade_schema() -> None:
+    """create_all não altera tabelas que já existem. Bancos criados antes do controle de acesso
+    ganham a coluna aqui, e os documentos antigos continuam visíveis para todos."""
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_global boolean NOT NULL DEFAULT true"))
 
 
 def _check_embedding_dimension() -> None:

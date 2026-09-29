@@ -40,6 +40,12 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:5173"
 
+    # Autenticação. Troque SECRET_KEY e ADMIN_PASSWORD em qualquer ambiente que não seja a sua máquina.
+    secret_key: str = "dev-secret-troque-em-producao"
+    token_hours: int = 8
+    admin_username: str = "admin"
+    admin_password: str = "admin"
+
     @property
     def vector_dim(self) -> int:
         return self.embedding_dim or DEFAULT_EMBEDDING_DIM[self.llm_provider]

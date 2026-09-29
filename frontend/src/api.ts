@@ -9,6 +9,31 @@ export interface Health {
   top_k: number;
 }
 
+export interface Area {
+  id: number;
+  name: string;
+}
+
+export interface User {
+  id: number;
+  username: string;
+  name: string;
+  is_admin: boolean;
+  areas: Area[];
+}
+
+export interface UserInput {
+  name: string;
+  is_admin: boolean;
+  area_ids: number[];
+  password?: string;
+}
+
+export interface DocumentAccess {
+  is_global: boolean;
+  area_ids: number[];
+}
+
 export interface DocumentInfo {
   id: number;
   filename: string;
@@ -16,6 +41,8 @@ export interface DocumentInfo {
   size_bytes: number;
   chunk_count: number;
   created_at: string;
+  is_global: boolean;
+  areas: Area[];
 }
 
 export interface UploadResult {
@@ -101,10 +128,53 @@ export interface EvalRunDetail extends EvalRun {
   results: EvalResult[];
 }
 
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+  }
+}
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${path}`, init);
+// --- Sessão ---
+
+const TOKEN_KEY = "docchat-token";
+let token: string | null = null;
+try {
+  token = localStorage.getItem(TOKEN_KEY);
+} catch {
+  /* storage indisponível: a sessão dura até fechar a aba */
+}
+let onUnauthorized: () => void = () => {};
+
+export const session = {
+  get token() {
+    return token;
+  },
+  set(value: string | null) {
+    token = value;
+    try {
+      if (value) localStorage.setItem(TOKEN_KEY, value);
+      else localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      /* segue só em memória */
+    }
+  },
+  /** Chamado quando a API responde 401 (token expirado ou inválido). */
+  onUnauthorized(handler: () => void) {
+    onUnauthorized = handler;
+  },
+};
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(`/api${path}`, { ...init, headers });
+  if (response.status === 401 && token) {
+    session.set(null);
+    onUnauthorized();
+  }
   if (!response.ok) {
     let message = `Erro ${response.status}`;
     try {
@@ -115,7 +185,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* resposta sem JSON */
     }
-    throw new ApiError(message);
+    throw new ApiError(message, response.status);
   }
   return response.status === 204 ? (undefined as T) : response.json();
 }
@@ -129,14 +199,38 @@ const json = (method: string, body: unknown): RequestInit => ({
 export const api = {
   health: () => request<Health>("/health"),
 
+  login: (username: string, password: string) =>
+    request<{ access_token: string; user: User }>("/auth/login", {
+      method: "POST",
+      body: new URLSearchParams({ username, password }),
+    }),
+  me: () => request<User>("/auth/me"),
+
+  areas: () => request<Area[]>("/areas"),
+  createArea: (name: string) => request<Area>("/areas", json("POST", { name })),
+  renameArea: (id: number, name: string) => request<Area>(`/areas/${id}`, json("PUT", { name })),
+  deleteArea: (id: number) => request<void>(`/areas/${id}`, { method: "DELETE" }),
+
+  users: () => request<User[]>("/users"),
+  createUser: (body: UserInput & { username: string; password: string }) =>
+    request<User>("/users", json("POST", body)),
+  updateUser: (id: number, body: UserInput) => request<User>(`/users/${id}`, json("PUT", body)),
+  deleteUser: (id: number) => request<void>(`/users/${id}`, { method: "DELETE" }),
+
   documents: () => request<DocumentInfo[]>("/documents"),
-  upload: (files: File[]) => {
+  upload: (files: File[], access: DocumentAccess) => {
     const form = new FormData();
     files.forEach((f) => form.append("files", f));
+    form.append("is_global", String(access.is_global));
+    access.area_ids.forEach((id) => form.append("area_ids", String(id)));
     return request<UploadResult>("/documents", { method: "POST", body: form });
   },
+  updateAccess: (id: number, access: DocumentAccess) =>
+    request<DocumentInfo>(`/documents/${id}/access`, json("PUT", access)),
   deleteDocument: (id: number) => request<void>(`/documents/${id}`, { method: "DELETE" }),
-  fileUrl: (id: number, page?: number) => `/api/documents/${id}/file${page ? `#page=${page}` : ""}`,
+  /** O PDF abre numa aba nova, que não manda cabeçalho; por isso o token vai na URL. */
+  fileUrl: (id: number, page?: number) =>
+    `/api/documents/${id}/file?access_token=${encodeURIComponent(token ?? "")}${page ? `#page=${page}` : ""}`,
 
   chat: (body: {
     question: string;

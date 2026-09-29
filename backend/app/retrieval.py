@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.access import Access, visible_document_ids
 from app.config import SearchMode
 from app.models import Chunk, Document
 from app.providers import get_embeddings
@@ -37,24 +38,28 @@ def build_or_tsquery(question: str) -> str | None:
     return " | ".join(terms) if terms else None
 
 
-def _vector_ranking(session: Session, qvec: list[float], limit: int, doc_ids: list[int] | None):
-    distance = Chunk.embedding.cosine_distance(qvec)
-    stmt = select(Chunk.id, distance.label("distance")).order_by(distance).limit(limit)
+def _restrict(stmt, doc_ids: list[int] | None, access: Access):
     if doc_ids:
         stmt = stmt.where(Chunk.document_id.in_(doc_ids))
+    if access.area_ids is not None:
+        stmt = stmt.where(Chunk.document_id.in_(visible_document_ids(access)))
+    return stmt
+
+
+def _vector_ranking(session: Session, qvec: list[float], limit: int, doc_ids: list[int] | None, access: Access):
+    distance = Chunk.embedding.cosine_distance(qvec)
+    stmt = _restrict(select(Chunk.id, distance.label("distance")).order_by(distance).limit(limit), doc_ids, access)
     return [(row.id, 1.0 - float(row.distance)) for row in session.execute(stmt)]
 
 
-def _text_ranking(session: Session, question: str, limit: int, doc_ids: list[int] | None) -> list[int]:
+def _text_ranking(session: Session, question: str, limit: int, doc_ids: list[int] | None, access: Access) -> list[int]:
     query_text = build_or_tsquery(question)
     if not query_text:
         return []
     tsq = func.to_tsquery("portuguese", query_text)
     rank = func.ts_rank_cd(Chunk.tsv, tsq)
     stmt = select(Chunk.id).where(Chunk.tsv.op("@@")(tsq)).order_by(rank.desc()).limit(limit)
-    if doc_ids:
-        stmt = stmt.where(Chunk.document_id.in_(doc_ids))
-    return [row.id for row in session.execute(stmt)]
+    return [row.id for row in session.execute(_restrict(stmt, doc_ids, access))]
 
 
 def reciprocal_rank_fusion(rankings: list[list[int]], k: int = RRF_K) -> dict[int, float]:
@@ -71,15 +76,17 @@ def retrieve(
     top_k: int,
     mode: SearchMode = "hybrid",
     document_ids: list[int] | None = None,
+    access: Access | None = None,
 ) -> list[RetrievedChunk]:
+    access = access or Access.unrestricted()
     qvec = get_embeddings().embed_query(question)
     candidates = top_k * CANDIDATES_FACTOR
-    vector = _vector_ranking(session, qvec, candidates, document_ids)
+    vector = _vector_ranking(session, qvec, candidates, document_ids, access)
     similarity = dict(vector)
 
     if mode == "hybrid":
         fused = reciprocal_rank_fusion(
-            [[cid for cid, _ in vector], _text_ranking(session, question, candidates, document_ids)]
+            [[cid for cid, _ in vector], _text_ranking(session, question, candidates, document_ids, access)]
         )
     else:
         fused = similarity

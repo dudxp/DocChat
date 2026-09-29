@@ -22,14 +22,41 @@ Construído com Python, FastAPI, LangChain, PostgreSQL + pgvector e React.
 | **Abrir na página** | Um clique abre o PDF original direto na página citada |
 | **Busca híbrida** | Combina busca vetorial com busca textual do Postgres, fundidas por Reciprocal Rank Fusion |
 | **Perguntas de acompanhamento** | "E qual o prazo dela?" é reescrita com base no histórico antes da busca |
+| **Controle de acesso por área** | Login, áreas e documentos visíveis para todos ou só para algumas áreas; o filtro é aplicado dentro da busca |
 | **Filtro por documento** | Restringe a busca a um ou mais PDFs |
 | **Avaliação por gabarito** | Roda perguntas com resposta e página esperadas e mede recuperação e resposta |
 | **Comparação de configurações** | Cada execução guarda modelo, top-k e tipo de busca, para comparar lado a lado |
+| **Aparência** | Tema claro, escuro ou do sistema e nove cores de destaque, salvos no navegador |
 | **Provedor configurável** | OpenAI (ou API compatível), Ollama local e gratuito, ou `fake` para testes |
 
 | Documentos | Gabarito |
 |---|---|
 | ![Documentos](docs/images/documentos.png) | ![Gabarito](docs/images/gabarito.png) |
+
+---
+
+## Controle de acesso
+
+Cada documento é **global** (visível para todos) ou **compartilhado com algumas áreas**. Um mesmo
+documento pode servir a várias áreas: o manual de uma máquina fica visível para Engenharia, Estoque e
+Produção, sem duplicar o arquivo, enquanto a tabela salarial fica só com o RH.
+
+| Papel | Pode |
+|---|---|
+| **Leitor** | Perguntar e abrir os documentos globais e os das suas áreas |
+| **Administrador** | Ver tudo, enviar e excluir documentos, definir quem vê cada um, cadastrar usuários e áreas, rodar avaliações |
+
+A restrição **não depende do prompt**. Ela é uma condição dentro da consulta SQL da busca vetorial e
+da busca textual, então um trecho que o usuário não pode ver nunca é recuperado e nunca chega ao modelo.
+Não existe pergunta capaz de fazer o modelo revelar um texto que ele não recebeu. O mesmo filtro vale para
+a lista de documentos e para o download do PDF: um documento de outra área responde `404`, como se não
+existisse.
+
+- Senhas com `scrypt` (biblioteca padrão do Python), com sal por usuário
+- Sessão com JWT assinado, com validade configurável (`TOKEN_HOURS`)
+- O primeiro administrador é criado a partir do `.env` (`ADMIN_USERNAME` / `ADMIN_PASSWORD`)
+
+![Documentos com controle de acesso](docs/images/acesso-documentos.png)
 
 ---
 
@@ -99,14 +126,17 @@ backend/
   app/
     config.py        configurações por variável de ambiente
     providers.py     fábrica de modelos: OpenAI, Ollama ou fake
+    access.py        regra de visibilidade usada em todas as consultas
+    auth.py          login, token e papéis nas rotas
+    security.py      hash de senha e JWT
     ingestion.py     leitura do PDF, chunking por página, embeddings
     retrieval.py     busca vetorial, textual e fusão RRF
     rag.py           reescrita da pergunta, prompt, extração das citações
     evaluation.py    métricas, LLM como juiz e execução do gabarito
-    routers/         endpoints REST (documentos, chat, avaliação)
+    routers/         endpoints REST (login, administração, documentos, chat, avaliação)
   tests/             testes unitários e de API com Postgres real
 frontend/
-  src/pages/         Chat, Documentos e Avaliação
+  src/pages/         Login, Chat, Documentos, Avaliação e Administração
 samples/             PDFs fictícios de exemplo e gabarito
 ```
 
@@ -138,7 +168,7 @@ enviados. Números inventados pelo modelo são descartados.
 
 | Camada | Stack |
 |---|---|
-| Back-end | Python 3.12, FastAPI, LangChain, SQLAlchemy 2, pypdf |
+| Back-end | Python 3.12, FastAPI, LangChain, SQLAlchemy 2, pypdf, PyJWT |
 | Banco | PostgreSQL 16, pgvector (HNSW), full-text search em português |
 | IA | OpenAI (`gpt-4o-mini`, `text-embedding-3-small`) ou Ollama (`llama3.1`, `nomic-embed-text`) |
 | Front-end | React 18, TypeScript, Vite, React Router |
@@ -159,7 +189,20 @@ docker compose up -d --build
 docker compose exec backend python -m app.seed   # opcional: carrega os PDFs de exemplo e o gabarito
 ```
 
-Abra **http://localhost:8080**. A documentação da API fica em **http://localhost:8000/docs**.
+Abra **http://localhost:8080**. A documentação da API fica em **http://localhost:8000/docs**
+(use o botão *Authorize* com um usuário e senha).
+
+O seed cria uma empresa de exemplo:
+
+| Usuário | Senha | Vê |
+|---|---|---|
+| `admin` | a do `ADMIN_PASSWORD` (padrão `admin`) | Tudo |
+| `engenharia` | `demo1234` | Benefícios e manual da esteira |
+| `estoque` | `demo1234` | Benefícios e manual da esteira |
+| `rh` | `demo1234` | Benefícios e faixas salariais |
+
+Pergunte "qual a faixa salarial do engenheiro de automação pleno?" entrando como `rh` e depois como
+`estoque`, para ver o controle de acesso funcionando.
 
 #### Usando Ollama (gratuito e local)
 
@@ -223,13 +266,21 @@ Todas as opções ficam no `.env` (veja [`.env.example`](.env.example)):
 | `TOP_K` | `5` | Quantos trechos são enviados ao modelo |
 | `SEARCH_MODE` | `hybrid` | `hybrid` ou `vector` |
 | `EMBEDDING_DIM` | do provedor | Dimensão dos vetores |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | `admin` / `admin` | Primeiro administrador, criado com o banco vazio |
+| `SECRET_KEY` | valor de desenvolvimento | Chave que assina os tokens. Troque fora da sua máquina |
+| `TOKEN_HOURS` | `8` | Validade do login |
 
 ## API
 
 | Método | Rota | Descrição |
 |---|---|---|
-| `GET` | `/api/health` | Provedor e modelos em uso |
-| `GET` `POST` | `/api/documents` | Lista e envia PDFs (multipart, vários arquivos) |
+| `GET` | `/api/health` | Provedor e modelos em uso (pública) |
+| `POST` | `/api/auth/login` | Login (formulário OAuth2), devolve o token |
+| `GET` | `/api/auth/me` | Usuário logado e suas áreas |
+| `GET` `POST` `PUT` `DELETE` | `/api/areas` | Áreas (escrita só para administradores) |
+| `GET` `POST` `PUT` `DELETE` | `/api/users` | Usuários (só administradores) |
+| `GET` `POST` | `/api/documents` | Lista os documentos visíveis e envia PDFs com `is_global` e `area_ids` |
+| `PUT` | `/api/documents/{id}/access` | Muda quem pode ver o documento |
 | `GET` | `/api/documents/{id}/file` | PDF original |
 | `DELETE` | `/api/documents/{id}` | Remove o documento e seus trechos |
 | `POST` | `/api/chat` | Pergunta, com histórico, filtro de documentos, `top_k` e modo de busca |
@@ -239,6 +290,9 @@ Todas as opções ficam no `.env` (veja [`.env.example`](.env.example)):
 
 ## Próximos passos
 
+- Prompt específico por área (foco em quantidades para o Estoque, em especificações para a Engenharia)
+- Consulta a dados estruturados (lista de materiais, estoque) por *function calling*
+- Migrações de banco com Alembic
 - Resposta em streaming (SSE)
 - OCR para PDFs escaneados
 - Reranking dos trechos com um cross-encoder

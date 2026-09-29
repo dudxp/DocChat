@@ -15,6 +15,53 @@ class HealthOut(BaseModel):
     top_k: int
 
 
+class AreaIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class AreaOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    name: str
+    is_admin: bool
+    areas: list[AreaOut]
+
+
+class UserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=80, pattern=r"^[a-zA-Z0-9._-]+$")
+    name: str = Field(min_length=1, max_length=120)
+    password: str = Field(min_length=6, max_length=128)
+    is_admin: bool = False
+    area_ids: list[int] = []
+
+
+class UserUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    is_admin: bool = False
+    area_ids: list[int] = []
+    password: str | None = Field(default=None, min_length=6, max_length=128)
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
+
+
+class DocumentAccessIn(BaseModel):
+    is_global: bool
+    area_ids: list[int] = []
+
+
 class DocumentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -24,6 +71,8 @@ class DocumentOut(BaseModel):
     size_bytes: int
     chunk_count: int
     created_at: datetime
+    is_global: bool
+    areas: list[AreaOut]
 
 
 class UploadError(BaseModel):

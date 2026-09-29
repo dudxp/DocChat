@@ -4,6 +4,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
     Boolean,
+    Column,
     Computed,
     DateTime,
     Float,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     String,
+    Table,
     Text,
 )
 from sqlalchemy.dialects.postgresql import TSVECTOR
@@ -30,6 +32,42 @@ class Base(DeclarativeBase):
     pass
 
 
+# Um documento pode ser visível para várias áreas, e um usuário pode pertencer a várias áreas.
+document_areas = Table(
+    "document_areas",
+    Base.metadata,
+    Column("document_id", ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
+    Column("area_id", ForeignKey("areas.id", ondelete="CASCADE"), primary_key=True, index=True),
+)
+
+user_areas = Table(
+    "user_areas",
+    Base.metadata,
+    Column("user_id", ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("area_id", ForeignKey("areas.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class Area(Base):
+    __tablename__ = "areas"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(80), unique=True)
+    name: Mapped[str] = mapped_column(String(120))
+    password_hash: Mapped[str] = mapped_column(String(255))
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    areas: Mapped[list[Area]] = relationship(secondary=user_areas, order_by="Area.name")
+
+
 class Document(Base):
     __tablename__ = "documents"
 
@@ -40,6 +78,10 @@ class Document(Base):
     # O PDF original fica no banco para o front abrir a página citada.
     file: Mapped[bytes] = deferred(mapped_column(LargeBinary))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Global: todo mundo vê. Caso contrário, só quem pertence a uma das áreas do documento.
+    is_global: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+
+    areas: Mapped[list[Area]] = relationship(secondary=document_areas, order_by="Area.name")
 
     chunks: Mapped[list["Chunk"]] = relationship(
         back_populates="document", cascade="all, delete-orphan", passive_deletes=True

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.auth import admin_user
 from app.db import SessionDep
 from app.evaluation import run_evaluation
 from app.models import Document, EvalCase, EvalRun
@@ -15,7 +16,8 @@ from app.schemas import (
     ImportOut,
 )
 
-router = APIRouter(prefix="/api/eval", tags=["evaluation"])
+# A avaliação roda sobre todos os documentos e é uma ferramenta de quem administra o sistema.
+router = APIRouter(prefix="/api/eval", tags=["evaluation"], dependencies=[Depends(admin_user)])
 
 
 def _case_out(case: EvalCase) -> EvalCaseOut:

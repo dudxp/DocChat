@@ -131,6 +131,28 @@ POLICY = [
     ),
 ]
 
+SALARIES = [
+    (
+        "Faixas Salariais e Critérios de Promoção — Empresa Exemplo Ltda.",
+        [
+            "Documento confidencial da área de Pessoas. Os valores abaixo são fictícios e existem apenas para "
+            "demonstrar o controle de acesso do DocChat: só usuários da área RH devem conseguir consultá-lo.",
+            "Revisão anual das faixas: em fevereiro, com base na pesquisa salarial de mercado.",
+        ],
+    ),
+    (
+        "1. Faixas por cargo",
+        [
+            "Técnico de manutenção I: de R$ 3.800,00 a R$ 4.900,00.",
+            "Técnico de manutenção II: de R$ 4.900,00 a R$ 6.300,00.",
+            "Engenheiro de automação pleno: de R$ 9.500,00 a R$ 12.800,00.",
+            "Analista de estoque: de R$ 4.200,00 a R$ 5.600,00.",
+            "A promoção entre níveis exige pelo menos 18 meses no nível atual e avaliação de desempenho igual "
+            "ou superior a 'atende plenamente' nos dois últimos ciclos.",
+        ],
+    ),
+]
+
 
 def build(path: Path, sections: list[tuple[str, list[str]]]) -> None:
     styles = getSampleStyleSheet()
@@ -149,4 +171,5 @@ def build(path: Path, sections: list[tuple[str, list[str]]]) -> None:
 if __name__ == "__main__":
     build(HERE / "manual-esteira-et200.pdf", MANUAL)
     build(HERE / "politica-ferias-beneficios.pdf", POLICY)
+    build(HERE / "faixas-salariais-rh.pdf", SALARIES)
     print("PDFs gerados em", HERE)

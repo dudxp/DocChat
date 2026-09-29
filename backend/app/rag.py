@@ -8,6 +8,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from sqlalchemy.orm import Session
 
+from app.access import Access
 from app.config import SearchMode, get_settings
 from app.providers import get_chat_model, is_fake
 from app.retrieval import RetrievedChunk, retrieve
@@ -85,6 +86,7 @@ def answer_question(
     top_k: int | None = None,
     mode: SearchMode | None = None,
     document_ids: list[int] | None = None,
+    access: Access | None = None,
 ) -> Answer:
     settings = get_settings()
     started = time.perf_counter()
@@ -96,6 +98,7 @@ def answer_question(
         top_k=top_k or settings.top_k,
         mode=mode or settings.search_mode,
         document_ids=document_ids,
+        access=access,
     )
 
     if not chunks:

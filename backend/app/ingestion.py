@@ -10,7 +10,7 @@ from pypdf.errors import PdfReadError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import Chunk, Document
+from app.models import Area, Chunk, Document
 from app.providers import get_embeddings
 
 EMBED_BATCH = 64
@@ -59,7 +59,14 @@ def split_pages(pages: list[str], chunk_size: int, chunk_overlap: int) -> list[P
     return chunks
 
 
-def ingest_pdf(session: Session, filename: str, data: bytes) -> Document:
+def ingest_pdf(
+    session: Session,
+    filename: str,
+    data: bytes,
+    *,
+    is_global: bool = True,
+    areas: list[Area] | None = None,
+) -> Document:
     settings = get_settings()
     pages = extract_pages(data)
     pieces = split_pages(pages, settings.chunk_size, settings.chunk_overlap)
@@ -72,7 +79,14 @@ def ingest_pdf(session: Session, filename: str, data: bytes) -> Document:
         batch = pieces[start : start + EMBED_BATCH]
         vectors.extend(embeddings.embed_documents([p.content for p in batch]))
 
-    document = Document(filename=filename, num_pages=len(pages), size_bytes=len(data), file=data)
+    document = Document(
+        filename=filename,
+        num_pages=len(pages),
+        size_bytes=len(data),
+        file=data,
+        is_global=is_global,
+        areas=list(areas or []),
+    )
     document.chunks = [
         Chunk(page=p.page, chunk_index=p.index, content=p.content, embedding=v)
         for p, v in zip(pieces, vectors, strict=True)
