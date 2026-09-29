@@ -137,6 +137,7 @@ backend/
   tests/             testes unitários e de API com Postgres real
 frontend/
   src/pages/         Login, Chat, Documentos, Avaliação e Administração
+  src/reference.tsx  referência da API: página à parte, fora do aplicativo
 samples/             PDFs fictícios de exemplo e gabarito
 ```
 
@@ -171,7 +172,7 @@ enviados. Números inventados pelo modelo são descartados.
 | Back-end | Python 3.12, FastAPI, LangChain, SQLAlchemy 2, pypdf, PyJWT |
 | Banco | PostgreSQL 16, pgvector (HNSW), full-text search em português |
 | IA | OpenAI (`gpt-4o-mini`, `text-embedding-3-small`) ou Ollama (`llama3.1`, `nomic-embed-text`) |
-| Front-end | React 18, TypeScript, Vite, React Router |
+| Front-end | React 18, TypeScript, Vite, React Router, Scalar (referência da API) |
 | Testes | pytest, com Postgres + pgvector reais |
 | Infra | Docker Compose, nginx, GitHub Actions |
 
@@ -189,8 +190,20 @@ docker compose up -d --build
 docker compose exec backend python -m app.seed   # opcional: carrega os PDFs de exemplo e o gabarito
 ```
 
-Abra **http://localhost:8080**. A documentação da API fica em **http://localhost:8000/docs**
-(use o botão *Authorize* com um usuário e senha).
+Abra **http://localhost:8080**.
+
+### Documentação da API
+
+| Endereço | O que é |
+|---|---|
+| http://localhost:8080/scalar | Referência com [Scalar](https://scalar.com): busca, exemplos em várias linguagens e cliente para testar as rotas. Página à parte, sem link no menu — quem usa o DocChat não precisa dela; se você já entrou no aplicativo neste navegador, ela abre autenticada |
+| http://localhost:8080/api/docs | Swagger UI (botão *Authorize* com usuário e senha) |
+| http://localhost:8080/api/redoc | ReDoc, só leitura |
+| http://localhost:8080/api/openapi.json | Especificação OpenAPI, para importar no Postman, Insomnia ou Bruno |
+
+O Scalar entra no build do front como dependência do npm, então funciona sem acesso a CDN. A
+referência é uma segunda entrada do build, com HTML próprio: o pacote dela não entra no carregamento
+do aplicativo.
 
 O seed cria uma empresa de exemplo:
 

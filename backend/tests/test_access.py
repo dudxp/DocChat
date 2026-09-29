@@ -225,3 +225,19 @@ def test_seed_creates_demo_company(client):
     assert visible(client, login(client, "rh", "demo1234")) == {POLICY.name, SALARIES.name}
     seed(SAMPLES)  # rodar de novo não duplica nada
     assert len(client.get("/api/documents").json()) == 3
+
+
+class TestApiDocs:
+    def test_openapi_and_docs_live_under_api(self, client):
+        spec = client.get("/api/openapi.json", headers={"Authorization": ""})
+        assert spec.status_code == 200
+        body = spec.json()
+        assert "OAuth2PasswordBearer" in body["components"]["securitySchemes"]
+        assert {t["name"] for t in body["tags"]} >= {"auth", "chat", "documents"}
+        for path in ("/api/docs", "/api/redoc"):
+            assert client.get(path, headers={"Authorization": ""}).status_code == 200
+
+    def test_each_route_has_a_single_tag(self, client):
+        spec = client.get("/api/openapi.json").json()
+        tags = [op.get("tags", []) for methods in spec["paths"].values() for op in methods.values()]
+        assert all(len(t) == 1 for t in tags)

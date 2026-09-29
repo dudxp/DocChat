@@ -9,6 +9,34 @@ from app.db import init_db
 from app.routers import admin, auth, chat, documents, evaluation
 from app.schemas import HealthOut
 
+DESCRIPTION = """
+Perguntas e respostas sobre PDFs com **citação de fonte**, **controle de acesso por área** e
+**avaliação por gabarito**.
+
+## Autenticação
+
+1. Faça login em `POST /api/auth/login` com usuário e senha (formulário OAuth2).
+2. Envie o `access_token` recebido no cabeçalho `Authorization: Bearer <token>`.
+
+Nesta página, use o botão de autenticação com usuário e senha: o token é obtido e enviado sozinho.
+
+## Acesso
+
+Cada documento é global ou compartilhado com algumas áreas. A lista de documentos, o download do PDF e
+a busca do chat só enxergam o que o usuário logado pode ver. Rotas de escrita, administração e
+avaliação exigem um administrador.
+"""
+
+TAGS = [
+    {"name": "auth", "description": "Login e dados do usuário logado."},
+    {"name": "chat", "description": "Perguntas sobre os documentos, com as fontes de cada resposta."},
+    {"name": "documents", "description": "Envio, listagem, acesso e download dos PDFs."},
+    {"name": "areas", "description": "Áreas da empresa, usadas para compartilhar documentos."},
+    {"name": "users", "description": "Cadastro de usuários (somente administradores)."},
+    {"name": "evaluation", "description": "Gabarito e execuções de avaliação (somente administradores)."},
+    {"name": "health", "description": "Situação da API e modelos em uso."},
+]
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -21,8 +49,13 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title="DocChat",
-        description="Perguntas e respostas sobre PDFs com citação de fonte e avaliação por gabarito.",
-        version="1.0.0",
+        description=DESCRIPTION,
+        version="1.1.0",
+        openapi_tags=TAGS,
+        # Tudo sob /api, para abrir pelo mesmo endereço do front (nginx e Vite só repassam /api).
+        openapi_url="/api/openapi.json",
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
         lifespan=lifespan,
     )
     app.add_middleware(

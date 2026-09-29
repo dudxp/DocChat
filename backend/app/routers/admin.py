@@ -11,7 +11,7 @@ from app.models import Area, User
 from app.schemas import AreaIn, AreaOut, UserCreate, UserOut, UserUpdate
 from app.security import hash_password
 
-router = APIRouter(prefix="/api", tags=["admin"])
+router = APIRouter(prefix="/api")
 
 
 def load_areas(session: Session, area_ids: list[int]) -> list[Area]:
