@@ -3,11 +3,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.auth import ensure_admin
-from app.config import get_settings
-from app.db import init_db
-from app.routers import admin, auth, chat, documents, evaluation
-from app.schemas import HealthOut
+from app.api.deps import ensure_admin
+from app.api.routers import admin, auth, chat, documents, evaluation
+from app.api.schemas import HealthOut
+from app.core.config import get_settings
+from app.core.db import init_db
 
 DESCRIPTION = """
 Perguntas e respostas sobre PDFs com **citação de fonte**, **controle de acesso por área** e

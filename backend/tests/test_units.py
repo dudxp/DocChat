@@ -1,37 +1,136 @@
 """Testes que não precisam de banco: chunking, citações, métricas e o juiz."""
 
+import io
 from types import SimpleNamespace
 
+import pytest
 from conftest import MANUAL
 
-from app.evaluation import citation_hit, parse_judge, retrieval_metrics, summarize, token_f1
-from app.ingestion import clean_text, extract_pages, split_pages
-from app.providers import HashingEmbeddings
-from app.rag import Answer, extract_citations, format_context
-from app.retrieval import RetrievedChunk, build_or_tsquery, reciprocal_rank_fusion
+from app.rag.evaluation import citation_hit, parse_judge, retrieval_metrics, summarize, token_f1
+from app.rag.extraction import IngestionError, Unit, clean_text, extract
+from app.rag.ingestion import split_units
+from app.rag.pipeline import Answer, extract_citations, format_context
+from app.rag.providers import HashingEmbeddings
+from app.rag.retrieval import RetrievedChunk, build_or_tsquery, reciprocal_rank_fusion
 
 
-def chunk(page: int, document_id: int = 1) -> RetrievedChunk:
+def chunk(unit: int, document_id: int = 1) -> RetrievedChunk:
     return RetrievedChunk(
-        chunk_id=page, document_id=document_id, filename="a.pdf", page=page, content="x", similarity=0.5, score=0.1
+        chunk_id=unit,
+        document_id=document_id,
+        filename="a.pdf",
+        kind="pdf",
+        unit=unit,
+        location=f"página {unit}",
+        content="x",
+        similarity=0.5,
+        score=0.1,
     )
 
 
-class TestIngestion:
-    def test_extracts_one_text_per_page(self):
-        pages = extract_pages(MANUAL.read_bytes())
-        assert len(pages) == 6
-        assert "1,5 kW" in pages[1]
+def units(*texts: str) -> list[Unit]:
+    return [Unit(ordinal=i, location=f"página {i}", text=t) for i, t in enumerate(texts, start=1)]
 
-    def test_chunks_never_cross_pages(self):
-        pages = ["a " * 800, "", "b " * 300]
-        chunks = split_pages(pages, chunk_size=500, chunk_overlap=50)
-        assert {c.page for c in chunks} == {1, 3}
-        assert all(set(c.content.split()) == {"a"} for c in chunks if c.page == 1)
+
+class TestIngestion:
+    def test_pdf_has_one_unit_per_page(self):
+        kind, extracted = extract("manual.pdf", MANUAL.read_bytes())
+        assert kind == "pdf"
+        assert len(extracted) == 6
+        assert "1,5 kW" in extracted[1].text
+        assert extracted[1].location == "página 2"
+
+    def test_chunks_never_cross_units(self):
+        chunks = split_units(units("a " * 800, "", "b " * 300), chunk_size=500, chunk_overlap=50)
+        assert {c.unit for c in chunks} == {1, 3}
+        assert all(set(c.content.split()) == {"a"} for c in chunks if c.unit == 1)
         assert [c.index for c in chunks] == list(range(len(chunks)))
+
+    def test_chunk_inherits_the_location_of_its_unit(self):
+        chunks = split_units([Unit(ordinal=2, location="planilha Custos", text="a " * 100)], 500, 50)
+        assert {c.location for c in chunks} == {"planilha Custos"}
+        assert {c.unit for c in chunks} == {2}
 
     def test_clean_text_rejoins_hyphenated_words_and_drops_nul(self):
         assert clean_text("manu-\ntenção\x00  preventiva") == "manutenção preventiva"
+
+
+class TestExtraction:
+    """Cada formato se divide de um jeito, e é essa divisão que a citação vai endereçar."""
+
+    def test_word_splits_on_headings_and_keeps_tables_in_place(self):
+        from docx import Document as Docx
+
+        document = Docx()
+        document.add_heading("Garantia", level=1)
+        document.add_paragraph("O prazo é de 12 meses.")
+        table = document.add_table(rows=1, cols=2)
+        table.rows[0].cells[0].text = "Peça"
+        table.rows[0].cells[1].text = "Parafuso"
+        document.add_heading("Manutenção", level=2)
+        document.add_paragraph("Lubrificar a cada 500 horas.")
+        buffer = io.BytesIO()
+        document.save(buffer)
+
+        kind, extracted = extract("manual.docx", buffer.getvalue())
+        assert kind == "docx"
+        assert [u.location for u in extracted] == ["Garantia", "Manutenção"]
+        # A tabela está na seção em que foi escrita, não empurrada para o fim do documento.
+        assert "Parafuso" in extracted[0].text
+        assert "500 horas" in extracted[1].text
+
+    def test_spreadsheet_has_one_unit_per_sheet_named_after_it(self):
+        from openpyxl import Workbook
+
+        workbook = Workbook()
+        workbook.active.title = "Custos"
+        workbook.active.append(["Item", "Valor"])
+        workbook.active.append(["Motor", 1500])
+        workbook.create_sheet("Prazos").append(["Entrega", "30 dias"])
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+
+        kind, extracted = extract("planilha.xlsx", buffer.getvalue())
+        assert kind == "xlsx"
+        assert [u.location for u in extracted] == ["planilha Custos", "planilha Prazos"]
+        assert "Motor | 1500" in extracted[0].text
+
+    def test_presentation_has_one_unit_per_slide(self):
+        from pptx import Presentation
+
+        presentation = Presentation()
+        slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+        slide.shapes.title.text = "Resultados do trimestre"
+        buffer = io.BytesIO()
+        presentation.save(buffer)
+
+        kind, extracted = extract("apresentacao.pptx", buffer.getvalue())
+        assert kind == "pptx"
+        assert [u.location for u in extracted] == ["slide 1"]
+        assert "Resultados do trimestre" in extracted[0].text
+
+    def test_markdown_splits_on_headings(self):
+        source = b"# Introducao\ntexto um\n\n## Detalhes\ntexto dois\n"
+        kind, extracted = extract("notas.md", source)
+        assert kind == "text"
+        assert [u.location for u in extracted] == ["Introducao", "Detalhes"]
+
+    def test_csv_row_carries_its_column_names(self):
+        """Sem o cabeçalho junto, o trecho recuperado é uma linha de números sem significado."""
+        _, extracted = extract("dados.csv", b"item,valor\nmotor,1500\n")
+        assert extracted[0].text == "item: motor | valor: 1500"
+        assert extracted[0].location == "planilha"
+
+    def test_plain_text_saved_on_windows_is_not_mangled(self):
+        _, extracted = extract("nota.txt", "manutenção preventiva".encode("cp1252"))
+        assert extracted[0].text == "manutenção preventiva"
+
+    def test_unsupported_extension_is_rejected_with_the_accepted_list(self):
+        with pytest.raises(IngestionError, match="Formato não suportado"):
+            extract("foto.jpg", b"\xff\xd8\xff")
+
+    def test_empty_document_yields_no_units(self):
+        assert extract("vazio.txt", b"   \n  ")[1] == []
 
 
 class TestCitations:
@@ -66,10 +165,10 @@ class TestRetrievalHelpers:
 
 
 class TestMetrics:
-    case = SimpleNamespace(document_id=1, expected_page=5)
+    case = SimpleNamespace(document_id=1, expected_unit=5)
 
-    def answer(self, pages: list[int], cited: list[int]) -> Answer:
-        return Answer(question="q", search_query="q", answer="", sources=[chunk(p) for p in pages], cited=cited)
+    def answer(self, units: list[int], cited: list[int]) -> Answer:
+        return Answer(question="q", search_query="q", answer="", sources=[chunk(u) for u in units], cited=cited)
 
     def test_reciprocal_rank_uses_position_of_first_correct_chunk(self):
         assert retrieval_metrics(self.answer([2, 5, 5], []), self.case) == (True, 0.5)
@@ -81,8 +180,8 @@ class TestMetrics:
         answer = Answer(question="q", search_query="q", answer="", sources=[chunk(5, document_id=2)])
         assert retrieval_metrics(answer, self.case) == (False, 0.0)
 
-    def test_case_without_page_is_not_measured(self):
-        case = SimpleNamespace(document_id=None, expected_page=None)
+    def test_case_without_unit_is_not_measured(self):
+        case = SimpleNamespace(document_id=None, expected_unit=None)
         assert retrieval_metrics(self.answer([1], []), case) == (None, None)
         assert citation_hit(self.answer([1], [1]), case) is None
 

@@ -1,8 +1,9 @@
 # DocChat
 
-Chat com documentos PDF usando **RAG** (Retrieval-Augmented Generation). Cada resposta indica **de qual
-trecho e de qual página** a informação saiu, e uma tela de **avaliação por gabarito** mede se o sistema
-está acertando.
+Chat com os documentos da empresa usando **RAG** (Retrieval-Augmented Generation) — PDF, Word, Excel,
+PowerPoint, texto, Markdown e CSV. Cada resposta indica **de qual trecho e de onde** a informação saiu
+(a página do PDF, a planilha do Excel, o slide da apresentação), e uma tela de **avaliação por
+gabarito** mede se o sistema está acertando.
 
 Construído com Python, FastAPI, LangChain, PostgreSQL + pgvector e React.
 
@@ -17,14 +18,15 @@ Construído com Python, FastAPI, LangChain, PostgreSQL + pgvector e React.
 
 | Recurso | Detalhe |
 |---|---|
-| **Upload de PDFs** | Extrai o texto página por página, divide em trechos e grava os embeddings no pgvector |
-| **Chat com citações** | A resposta marca `[1]`, `[2]`… e cada marcação abre o trecho e a página de onde veio |
-| **Abrir na página** | Um clique abre o PDF original direto na página citada |
+| **Upload de documentos** | PDF, `.docx`, `.xlsx`, `.pptx`, `.txt`, `.md` e `.csv`: extrai o texto divisão por divisão, quebra em trechos e grava os embeddings no pgvector |
+| **Citação que localiza** | Cada formato se divide do seu jeito — página, seção, planilha, slide — e é isso que a citação mostra |
+| **Chat com citações** | A resposta marca `[1]`, `[2]`… e cada marcação abre o trecho de onde veio |
+| **Abrir no original** | Um clique abre o PDF na página citada; nos outros formatos, baixa o arquivo original |
 | **Busca híbrida** | Combina busca vetorial com busca textual do Postgres, fundidas por Reciprocal Rank Fusion |
 | **Perguntas de acompanhamento** | "E qual o prazo dela?" é reescrita com base no histórico antes da busca |
 | **Controle de acesso por área** | Login, áreas e documentos visíveis para todos ou só para algumas áreas; o filtro é aplicado dentro da busca |
-| **Filtro por documento** | Restringe a busca a um ou mais PDFs |
-| **Avaliação por gabarito** | Roda perguntas com resposta e página esperadas e mede recuperação e resposta |
+| **Filtro por documento** | Restringe a busca a um ou mais documentos |
+| **Avaliação por gabarito** | Roda perguntas com resposta e divisão esperadas e mede recuperação e resposta |
 | **Comparação de configurações** | Cada execução guarda modelo, top-k e tipo de busca, para comparar lado a lado |
 | **Aparência** | Tema claro, escuro ou do sistema e nove cores de destaque, salvos no navegador |
 | **Provedor configurável** | OpenAI (ou API compatível), Ollama local e gratuito, ou `fake` para testes |
@@ -89,10 +91,13 @@ O gabarito pode ser montado na tela ou importado em JSON:
     "question": "Qual o prazo de garantia do equipamento?",
     "expected_answer": "12 meses a partir da data da nota fiscal.",
     "document": "manual-esteira-et200.pdf",
-    "expected_page": 5
+    "expected_unit": 5
   }
 ]
 ```
+
+`expected_unit` é a divisão do documento onde a resposta está — página no PDF, planilha no Excel,
+slide na apresentação. Gabaritos antigos, com `expected_page`, continuam sendo importados.
 
 ---
 
@@ -101,8 +106,8 @@ O gabarito pode ser montado na tela ou importado em JSON:
 ```mermaid
 flowchart LR
     subgraph Ingestão
-        PDF[PDF] --> P[pypdf<br/>texto por página]
-        P --> S[Text splitter<br/>trechos sem cruzar páginas]
+        PDF[PDF, Word, Excel<br/>PowerPoint, texto] --> P[Extração por formato<br/>página, seção, planilha, slide]
+        P --> S[Text splitter<br/>trechos sem cruzar divisões]
         S --> E1[Embeddings]
     end
     E1 --> DB[(PostgreSQL<br/>pgvector + tsvector)]
@@ -124,20 +129,33 @@ flowchart LR
 ```
 backend/
   app/
-    config.py        configurações por variável de ambiente
-    providers.py     fábrica de modelos: OpenAI, Ollama ou fake
-    access.py        regra de visibilidade usada em todas as consultas
-    auth.py          login, token e papéis nas rotas
-    security.py      hash de senha e JWT
-    ingestion.py     leitura do PDF, chunking por página, embeddings
-    retrieval.py     busca vetorial, textual e fusão RRF
-    rag.py           reescrita da pergunta, prompt, extração das citações
-    evaluation.py    métricas, LLM como juiz e execução do gabarito
-    routers/         endpoints REST (login, administração, documentos, chat, avaliação)
+    main.py          cria a aplicação e monta os routers
+    seed.py          carrega os dados de demonstração
+    core/            o que não tem significado de negócio e todo mundo usa
+      config.py      configurações por variável de ambiente
+      db.py          engine, sessão e criação do schema
+      security.py    hash de senha e JWT
+    domain/          o que o sistema é
+      models.py      tabelas e relacionamentos
+      access.py      regra de visibilidade usada em todas as consultas
+    rag/             o que o sistema faz
+      providers.py   fábrica de modelos: OpenAI, Ollama ou fake
+      extraction.py  leitura de cada formato e em que ele se divide
+      ingestion.py   chunking por divisão e gravação dos embeddings
+      retrieval.py   busca vetorial, textual e fusão RRF
+      pipeline.py    reescrita da pergunta, prompt, extração das citações
+      evaluation.py  métricas, LLM como juiz e execução do gabarito
+    api/             a borda HTTP
+      deps.py        usuário logado e exigência de administrador
+      schemas.py     contratos de entrada e saída
+      routers/       endpoints REST (login, administração, documentos, chat, avaliação)
   tests/             testes unitários e de API com Postgres real
 frontend/
-  src/pages/         Login, Chat, Documentos, Avaliação e Administração
-  src/reference.tsx  referência da API: página à parte, fora do aplicativo
+  src/
+    main.tsx         entrada do aplicativo    (index.html)
+    scalar.tsx       entrada da referência    (scalar.html), fora do aplicativo
+    app/             App, autenticação, páginas e componentes
+    lib/             cliente da API e tema, usados pelas duas entradas
 samples/             PDFs fictícios de exemplo e gabarito
 ```
 
@@ -292,9 +310,9 @@ Todas as opções ficam no `.env` (veja [`.env.example`](.env.example)):
 | `GET` | `/api/auth/me` | Usuário logado e suas áreas |
 | `GET` `POST` `PUT` `DELETE` | `/api/areas` | Áreas (escrita só para administradores) |
 | `GET` `POST` `PUT` `DELETE` | `/api/users` | Usuários (só administradores) |
-| `GET` `POST` | `/api/documents` | Lista os documentos visíveis e envia PDFs com `is_global` e `area_ids` |
+| `GET` `POST` | `/api/documents` | Lista os documentos visíveis e envia arquivos com `is_global` e `area_ids` |
 | `PUT` | `/api/documents/{id}/access` | Muda quem pode ver o documento |
-| `GET` | `/api/documents/{id}/file` | PDF original |
+| `GET` | `/api/documents/{id}/file` | Arquivo original |
 | `DELETE` | `/api/documents/{id}` | Remove o documento e seus trechos |
 | `POST` | `/api/chat` | Pergunta, com histórico, filtro de documentos, `top_k` e modo de busca |
 | `GET` `POST` `PUT` `DELETE` | `/api/eval/cases` | Gabarito |

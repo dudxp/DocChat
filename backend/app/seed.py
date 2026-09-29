@@ -9,11 +9,11 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from app.auth import ensure_admin
-from app.db import SessionLocal, init_db
-from app.ingestion import ingest_pdf
-from app.models import Area, Document, EvalCase, User
-from app.security import hash_password
+from app.api.deps import ensure_admin
+from app.core.db import SessionLocal, init_db
+from app.core.security import hash_password
+from app.domain.models import Area, Document, EvalCase, User
+from app.rag.ingestion import ingest_document
 
 SAMPLES = Path(os.environ.get("SAMPLES_DIR", Path(__file__).resolve().parents[2] / "samples"))
 
@@ -66,7 +66,7 @@ def seed(samples_dir: Path = SAMPLES) -> None:
                 print(f"= {pdf.name} já existe")
                 continue
             allowed = SAMPLE_ACCESS.get(pdf.name)
-            doc = ingest_pdf(
+            doc = ingest_document(
                 session,
                 pdf.name,
                 pdf.read_bytes(),
@@ -75,7 +75,7 @@ def seed(samples_dir: Path = SAMPLES) -> None:
             )
             existing[pdf.name] = doc.id
             scope = "global" if allowed is None else ", ".join(allowed)
-            print(f"+ {pdf.name}: {doc.num_pages} páginas, {len(doc.chunks)} trechos ({scope})")
+            print(f"+ {pdf.name}: {doc.num_units} páginas, {len(doc.chunks)} trechos ({scope})")
 
         if session.scalar(select(EvalCase.id).limit(1)) is not None:
             print("= gabarito já carregado")
@@ -87,7 +87,7 @@ def seed(samples_dir: Path = SAMPLES) -> None:
                     question=item["question"],
                     expected_answer=item["expected_answer"],
                     document_id=existing.get(item.get("document")),
-                    expected_page=item.get("expected_page"),
+                    expected_unit=item.get("expected_unit", item.get("expected_page")),
                 )
             )
         session.commit()

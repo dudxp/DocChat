@@ -7,7 +7,7 @@ import pytest
 from conftest import MANUAL, POLICY, SALARIES, SAMPLES, login
 from sqlalchemy import inspect, text
 
-from app.security import create_token, decode_token, hash_password, verify_password
+from app.core.security import create_token, decode_token, hash_password, verify_password
 
 SALARY_QUESTION = "Qual a faixa salarial do engenheiro de automação pleno?"
 
@@ -208,7 +208,7 @@ class TestSecurityHelpers:
 
 def test_existing_database_gains_the_access_column(database):
     """Bancos criados antes desta versão não tinham is_global; init_db acrescenta a coluna."""
-    from app.db import init_db
+    from app.core.db import init_db
 
     with database.begin() as conn:
         conn.execute(text("ALTER TABLE documents DROP COLUMN is_global"))

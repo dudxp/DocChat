@@ -30,7 +30,7 @@ def database():
     from sqlalchemy import text
     from sqlalchemy.exc import OperationalError
 
-    from app.db import engine, init_db
+    from app.core.db import engine, init_db
 
     try:
         init_db()
